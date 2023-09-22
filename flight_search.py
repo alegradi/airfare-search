@@ -80,8 +80,17 @@ class FlightSearch:
             origin_airport=data["flyFrom"],
             destination_city=data["cityTo"],
             destination_airport=data["route"][0]["flyTo"],
+
             out_date=data["route"][0]["local_departure"].split("T")[0],
-            return_date=data["route"][1]["local_departure"].split("T")[0]
+            out_time=data["route"][0]["local_departure"].split("T")[1],
+            out_airline=data["route"][0]["airline"],
+            out_flight_no=data["route"][0]["flight_no"],
+
+            return_date=data["route"][1]["local_departure"].split("T")[0],
+            return_time=data["route"][1]["local_departure"].split("T")[1],
+            return_airline=data["route"][1]["airline"],
+            return_flight_no=data["route"][1]["flight_no"]
+
         )
 
         print(f"{flight_data.origin_airport} - {flight_data.destination_city}({flight_data.destination_airport})"
