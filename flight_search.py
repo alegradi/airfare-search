@@ -3,8 +3,10 @@ import os
 import datetime as dt
 import json
 import time
+from flight_data import FlightData
 
 KIWI_APIKEY = os.environ["KIWI_APIKEY"]
+SEARCH_HEADERS = {"apikey": KIWI_APIKEY}
 
 
 class FlightSearch:
@@ -12,71 +14,76 @@ class FlightSearch:
     This class is responsible for talking to the Flight Search API.
     """
 
-    def __init__(self):
-        self.departure_airport = "MAN"
-        self.destination_airport = ""
-
-        # Date and time
-        self.date_time = dt.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-        date_tomorrow = dt.datetime.today() + dt.timedelta(days=1)
-        self.tomorrow = date_tomorrow.strftime("%d/%m/%Y")
-        date_six_months_from_now = dt.datetime.today() + dt.timedelta(days=180)
-        self.date_six_months_from_now = date_six_months_from_now.strftime("%d/%m/%Y")
-
-        # Search attributes
-        self.search_headers = {
-            "apikey": KIWI_APIKEY
-        }
-        self.search_params = ""
-
-    def find_iata(self, city_name):
+    def get_iata_code(self, city_name):
         search_url = "https://api.tequila.kiwi.com/locations/query"
 
         search_params = {
             "term": city_name,
             "location_types": "city"
         }
-        response = requests.get(url=search_url, headers=self.search_headers, params=search_params)
+        response = requests.get(url=search_url, headers=SEARCH_HEADERS, params=search_params)
         response.raise_for_status()
         response_json = response.json()
-        self.city_iata = response_json["locations"][0]["code"]
-        return self.city_iata
+        self.city_iata_code = response_json["locations"][0]["code"]
+        return self.city_iata_code
 
-    def basic_flight_search(self, destination_airport):
+    def basic_flight_search(self, origin_city_code, destination_city_code, from_time, to_time, max_stopovers,
+                            curr_time):
         search_url = "https://api.tequila.kiwi.com/v2/search"
-        self.search_params = {
-            "fly_from": self.departure_airport,
-            "fly_to": destination_airport,
-            "date_from": self.tomorrow,
-            "date_to": self.date_six_months_from_now,
-            "nights_in_dst_from": 5,
+        params = {
+            "fly_from": origin_city_code,
+            "fly_to": destination_city_code,
+            "date_from": from_time,
+            "date_to": to_time,
+            "nights_in_dst_from": 3,
             "nights_in_dst_to": 7,
             "ret_from_diff_city": "false",
             "ret_to_diff_city": "false",
             "adults": 2,
             "children": 1,
             "selected_cabins": "M",
-            "adult_hold_bag": "1,0",
             "adult_hand_bag": "1,1",
-            "child_hold_bag": 1,
             "child_hand_bag": 1,
             "only_working_days": "false",
             "only_weekends": "false",
             "one_for_city": 0,
             "one_per_date": 0,
+            "max_stopovers": max_stopovers,
             "vehicle_type": "aircraft",
             "curr": "GBP",
             "locale": "en",
-            "limit": 3
+            "limit": 3,
         }
 
-        response = requests.get(url=search_url, headers=self.search_headers, params=self.search_params)
-        response.raise_for_status()
-        self.data = response.json()
+        response = requests.get(
+            url=search_url,
+            headers=SEARCH_HEADERS,
+            params=params
+        )
 
-        # write json to file
-        with open(f"search_results/{self.date_time}-{destination_airport}.json", "w") as data_file:
-            json.dump(self.data, data_file, indent=4)
+        time.sleep(5)
 
-        time.sleep(5)  # To not exceed our API request/min allowance
-        return self.data
+        try:
+            data = response.json()["data"][0]
+            # data = response.json()
+        except IndexError:
+            print(f"No flights with your parameters to {destination_city_code}")
+            return None
+
+        # Write json to file
+        with open(f"search_results/{curr_time}-{destination_city_code}.json", "w") as data_file:
+            json.dump(data, data_file, indent=4)
+
+        # Use data with FlightData
+        flight_data = FlightData(
+            price=data["price"],
+            origin_airport=data["flyFrom"],
+            destination_city=data["cityTo"],
+            destination_airport=data["route"][0]["flyTo"],
+            out_date=data["route"][0]["local_departure"].split("T")[0],
+            return_date=data["route"][1]["local_departure"].split("T")[0]
+        )
+
+        print(f"{flight_data.origin_airport} - {flight_data.destination_city}({flight_data.destination_airport})"
+              f" -- £{flight_data.price}")
+        return flight_data
